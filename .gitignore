@@ -3,8 +3,10 @@
 
 # Python
 __pycache__/
+*.pyc
 *.py[cod]
 *.pyo
+
 
 # Environment variables
 .env
