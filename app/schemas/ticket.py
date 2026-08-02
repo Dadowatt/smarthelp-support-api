@@ -10,7 +10,7 @@ class VisionResult(BaseModel):
 class RagResult(BaseModel):
     policy: str
     confidence: float
-    status: str | None = None
+    status: str
 
 
 class TicketResponse(BaseModel):

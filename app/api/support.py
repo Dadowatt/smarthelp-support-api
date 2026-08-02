@@ -1,8 +1,9 @@
 from fastapi import APIRouter, File, Form, UploadFile
 
-from app.schemas.ticket import TicketResponse
+from app.schemas.ticket import TicketResponse, RagResult
 from app.services.audio.service import process_audio
 from app.services.vision.service import process_image
+from app.services.rag.service import search_policy
 
 from app.utils.file_validator import (
     validate_audio_file,
@@ -10,7 +11,6 @@ from app.utils.file_validator import (
     validate_image_file,
     validate_image_size,
 )
-from app.services.rag.service import search_policy
 
 router = APIRouter(tags=["Support"])
 
@@ -25,24 +25,57 @@ async def create_support_ticket(
     vision_result = None
     rag_result = None
 
+    # ==========================
+    # Traitement audio
+    # ==========================
     if audio is not None:
         await validate_audio_size(audio)
         validate_audio_file(audio)
         transcription = await process_audio(audio)
 
-        if transcription:
-            rag_result = search_policy(transcription)
-
+    # ==========================
+    # Traitement image
+    # ==========================
     if image is not None:
         await validate_image_size(image)
         validate_image_file(image)
         vision_result = await process_image(image)
 
-    if rag_result is None and description:
-        rag_result = search_policy(description)
+    # ==========================
+    # Construction du contexte
+    # ==========================
+    context = []
+
+    if description:
+        context.append(description)
+
+    if transcription:
+        context.append(transcription)
+
+    if (
+        vision_result is not None
+        and vision_result.defect_detected
+    ):
+        context.append(
+            f"Analyse image : {vision_result.label}"
+        )
+
+    combined_text = " ".join(context)
+
+    # ==========================
+    # Recherche RAG
+    # ==========================
+    if combined_text:
+        rag = search_policy(combined_text)
+
+        rag_result = RagResult(
+            policy=rag["policy"],
+            status=rag["status"],
+            confidence=rag["confidence"],
+        )
 
     return TicketResponse(
-        message="Ticket reçu avec succès.",
+        message="Ticket analysé avec succès.",
         description=description,
         transcription=transcription,
         vision_result=vision_result,
