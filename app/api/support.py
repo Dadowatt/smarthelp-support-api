@@ -10,6 +10,7 @@ from app.utils.file_validator import (
     validate_image_file,
     validate_image_size,
 )
+from app.services.rag.service import search_policy
 
 router = APIRouter(tags=["Support"])
 
@@ -22,22 +23,30 @@ async def create_support_ticket(
 ):
     transcription = None
     vision_result = None
+    rag_result = None
 
     if audio is not None:
         await validate_audio_size(audio)
         validate_audio_file(audio)
         transcription = await process_audio(audio)
 
+        if transcription:
+            rag_result = search_policy(transcription)
+
     if image is not None:
         await validate_image_size(image)
         validate_image_file(image)
         vision_result = await process_image(image)
+
+    if rag_result is None and description:
+        rag_result = search_policy(description)
 
     return TicketResponse(
         message="Ticket reçu avec succès.",
         description=description,
         transcription=transcription,
         vision_result=vision_result,
+        rag_result=rag_result,
         audio_received=audio is not None,
         image_received=image is not None,
     )
