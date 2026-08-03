@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 
 from app.schemas.ticket import TicketResponse
 from app.services.audio.service import process_audio
@@ -17,10 +17,19 @@ router = APIRouter(tags=["Support"])
 
 @router.post("/support-ticket", response_model=TicketResponse)
 async def create_support_ticket(
-    description: str | None = Form(default=None),
+    description: str | None = Form(default=None, examples=[""]),
     audio: UploadFile | None = File(default=None),
     image: UploadFile | None = File(default=None),
 ):
+    if description:
+        description = description.strip()
+
+    if not audio and not image and not description:
+        raise HTTPException(
+            status_code=400,
+            detail="Vous devez fournir au moins un audio, une image ou une description."
+        )
+
     transcription = None
     vision_result = None
     rag_result = None
