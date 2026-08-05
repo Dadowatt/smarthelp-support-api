@@ -3,7 +3,6 @@ import os
 
 load_dotenv()
 
-
 # Audio
 AUDIO_MODEL_NAME = os.getenv(
     "AUDIO_MODEL_NAME",
@@ -25,4 +24,12 @@ VISION_MODEL_NAME = os.getenv(
 RAG_MODEL_NAME = os.getenv(
     "RAG_MODEL_NAME",
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+)
+
+# OpenRouter
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+OPENROUTER_MODEL = os.getenv(
+    "OPENROUTER_MODEL",
+    "openai/gpt-oss-20b:free"
 )

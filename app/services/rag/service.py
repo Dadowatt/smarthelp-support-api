@@ -1,5 +1,5 @@
 from app.services.rag.loader import load_rag_model
-
+from app.services.llm.service import generate_answer
 
 def extract_status(policy: str):
     """
@@ -110,7 +110,7 @@ def prioritize_rule(query: str, results: list):
     return results[0]
 
 
-def search_policy(query: str):
+async def search_policy(query: str):
     rag = load_rag_model()
 
     model = rag["model"]
@@ -140,6 +140,29 @@ def search_policy(query: str):
 
     best_result = prioritize_rule(query, results)
 
-    best_result["confidence"] = round(best_result["confidence"], 2)
+    best_result["confidence"] = round(
+        best_result["confidence"],
+        2,
+    )
 
-    return best_result
+    llm_response = await generate_answer(
+        question=query,
+        context=best_result["policy"],
+    )
+
+    if llm_response is None:
+        llm_response = {
+            "diagnostic": "Analyse automatique indisponible.",
+            "statut_final": "À vérifier",
+            "action_recommandee": (
+                "Une vérification manuelle du dossier est nécessaire."
+            ),
+        }
+
+
+    return {
+        "policy": best_result["policy"],
+        "confidence": best_result["confidence"],
+        "policy_status": best_result["status"],
+        "diagnostic": llm_response,
+    }

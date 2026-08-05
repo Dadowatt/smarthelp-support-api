@@ -5,7 +5,7 @@ BASE DE CONNAISSANCES INTERNE - POLITIQUE DE SUPPORT ET DE RETOUR (SMARTHELP)
 [DOCUMENT OFFICIEL - USAGE INTERNE ET AUTOMATISATION RAG]
 
 ---
-SECTION 1 : PRODUITS ENDOMMAGÉS OU CASSÉS À LA LIVRAISON
+SECTION 1 : PRODUITS ENDOMMAGÉS OU CASSÉS À LA LIVRAISON    
 ---
 - Règle 1.1 (Casse / Dommage visible) : Si le client signale un produit cassé, fissuré ou endommagé, et fournit une photo probante de l'article dans un délai de 48 heures suivant la réception, le dossier est éligible à un remboursement intégral ou à un renvoi gratuit. Statut associé : "Remboursable".
 - Règle 1.2 (Délai dépassé) : Si la réclamation pour produit cassé est faite après un délai de 48 heures, la demande est soumise à validation manuelle du manager. Statut associé : "À vérifier".

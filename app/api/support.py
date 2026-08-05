@@ -40,7 +40,7 @@ async def create_support_ticket(
         transcription = await process_audio(audio)
 
         if transcription:
-            rag_result = search_policy(transcription)
+            rag_result = await search_policy(transcription)
 
     if image is not None:
         await validate_image_size(image)
@@ -48,7 +48,7 @@ async def create_support_ticket(
         vision_result = await process_image(image)
 
     if rag_result is None and description:
-        rag_result = search_policy(description)
+        rag_result = await search_policy(description)
 
     return TicketResponse(
         message="Ticket reçu avec succès.",
