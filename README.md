@@ -1,90 +1,176 @@
 # SmartHelp API
 
-Micro-service FastAPI de support client multimodal permettant d'analyser des réclamations clients contenant du texte, un message vocal ou une image de produit endommagé.
+Micro-service FastAPI de support client multimodal permettant d'analyser automatiquement des réclamations clients contenant du texte, un message vocal ou une image de produit endommagé.
 
-Le service combine plusieurs technologies d'intelligence artificielle :
-- Whisper pour la transcription audio ;
-- CLIP pour l'analyse d'image en Zero-Shot ;
-- un système RAG basé sur FAISS pour rechercher les règles métier pertinentes.
+Le service combine plusieurs briques d'intelligence artificielle afin d'automatiser la première analyse d'un ticket client :
 
----
-
-## Fonctionnalités
-
-- Réception d'un ticket client via `POST /support-ticket`
-- Support des descriptions textuelles, fichiers audio et images
-- Transcription automatique des messages vocaux
-- Analyse d'images de produits endommagés
-- Recherche documentaire dans une base de connaissances interne
-- Retour d'un diagnostic structuré au format JSON
-- Validation des fichiers entrants
-- Gestion des erreurs
-- Chargement optimisé des modèles IA en mémoire
+* **Whisper** pour la transcription automatique des messages vocaux ;
+* **CLIP** pour l'analyse visuelle des images produits ;
+* **FAISS + Sentence Transformers** pour la recherche documentaire RAG ;
+* **LLM via OpenRouter (Google Gemma)** pour générer un diagnostic métier structuré à partir des règles récupérées.
 
 ---
 
-## Architecture du projet
+# Fonctionnalités
+
+* Réception d'un ticket client via `POST /support-ticket`
+* Support des descriptions textuelles, fichiers audio et images
+* Transcription automatique des messages vocaux avec Whisper
+* Analyse d'images de produits endommagés avec CLIP Zero-Shot
+* Recherche intelligente dans une base de connaissances interne avec un système RAG
+* Génération d'un diagnostic client structuré grâce à un LLM
+* Retour JSON contenant :
+
+  * la règle métier trouvée ;
+  * le niveau de confiance du RAG ;
+  * le statut issu de la politique interne ;
+  * le diagnostic généré par le LLM ;
+  * l'action recommandée
+* Validation des fichiers entrants
+* Gestion centralisée des erreurs
+* Chargement optimisé des modèles IA en mémoire
+
+---
+
+# Architecture du projet
 
 ```
 app/
-├── api/              # Routes FastAPI
-├── core/             # Configuration et gestion des exceptions
-├── knowledge/        # Documents utilisés par le RAG
-├── schemas/          # Modèles de données Pydantic
+├── api/
+│   └── support.py              # Routes FastAPI
+│
+├── core/
+│   ├── config.py               # Configuration des modèles et variables d'environnement
+│   └── exceptions.py            # Gestion globale des erreurs
+│
+├── knowledge/
+│   └── support_policy.txt       # Base documentaire utilisée par le RAG
+│
+├── schemas/
+│   └── ticket.py                # Modèles Pydantic des réponses API
+│
 ├── services/
-│   ├── audio/        # Traitement audio avec Whisper
-│   ├── vision/       # Analyse visuelle avec CLIP
-│   └── rag/          # Recherche documentaire FAISS
-├── utils/            # Validation des fichiers
-└── main.py           # Point d'entrée FastAPI
+│   │
+│   ├── audio/
+│   │   ├── loader.py            # Chargement Whisper avec cache
+│   │   └── service.py           # Transcription audio
+│   │
+│   ├── vision/
+│   │   ├── loader.py            # Chargement CLIP avec cache
+│   │   └── service.py           # Analyse des images
+│   │
+│   ├── rag/
+│   │   ├── loader.py            # Chargement FAISS + embeddings
+│   │   └── service.py           # Recherche documentaire et orchestration RAG
+│   │
+│   └── llm/
+│       └── service.py           # Génération du diagnostic via OpenRouter
+│
+├── utils/
+│   └── file_validator.py        # Validation des fichiers entrants
+│
+└── main.py                      # Point d'entrée FastAPI
 ```
 
 ---
 
-## Technologies utilisées
+# Technologies utilisées
 
-- Python 3.12
-- FastAPI
-- Hugging Face Transformers
-- PyTorch
-- Pydantic
-- Whisper
-- CLIP
-- Sentence Transformers
-- FAISS
-- Pillow
+* Python 3.12
+* FastAPI
+* Pydantic
+* Hugging Face Transformers
+* PyTorch
+* Sentence Transformers
+* FAISS
+* Whisper
+* CLIP
+* OpenRouter API
+* Google Gemma LLM
+* Pillow
 
 ---
 
-## Modèles utilisés
+# Modèles utilisés
 
-### Audio
+## Audio
 
 ```
 openai/whisper-base
 ```
 
-Utilisé pour transformer les messages vocaux clients en texte.
+Utilisé pour convertir les messages vocaux clients en texte exploitable par le système RAG.
 
-### Vision
+---
+
+## Vision
 
 ```
 openai/clip-vit-base-patch32
 ```
 
-Utilisé pour analyser les images en approche Zero-Shot et identifier des défauts visibles.
+Utilisé pour analyser les images en Zero-Shot afin d'identifier des défauts visibles comme :
 
-### RAG
+* écran fissuré ;
+* produit endommagé ;
+* défaut physique.
+
+---
+
+## Embedding RAG
 
 ```
 sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 ```
 
-Utilisé pour rechercher les règles métier correspondantes dans la base documentaire interne avec FAISS.
+Ce modèle transforme les requêtes utilisateurs et les règles internes en vecteurs afin de permettre une recherche sémantique avec FAISS.
 
 ---
 
-## Installation
+## LLM Diagnostic
+
+```
+google/gemma-4-31b-it:free
+```
+
+Utilisé via OpenRouter pour analyser la règle récupérée par le RAG et produire un diagnostic structuré.
+
+Le LLM ne remplace pas la recherche documentaire :
+
+* le RAG trouve la règle applicable ;
+* le LLM interprète cette règle selon le contexte du client.
+
+---
+
+# Fonctionnement du pipeline IA
+
+```
+                    Ticket client
+                         |
+        --------------------------------
+        |              |               |
+     Texte          Audio            Image
+        |              |               |
+        |          Whisper            |
+        |              |               |
+        -------- Transcription --------
+                         |
+                         |
+                Recherche RAG FAISS
+                         |
+                  Règle métier trouvée
+                         |
+                         |
+                 LLM Google Gemma
+                 via OpenRouter
+                         |
+                         |
+              Diagnostic JSON final
+```
+
+---
+
+# Installation
 
 Cloner le projet :
 
@@ -121,7 +207,31 @@ pip install -r requirements.txt
 
 ---
 
-## Lancement de l'API
+# Configuration
+
+Créer un fichier `.env` à la racine du projet :
+
+```env
+# Audio
+AUDIO_MODEL_NAME=openai/whisper-base
+DEFAULT_LANGUAGE=french
+
+# Vision
+VISION_MODEL_NAME=openai/clip-vit-base-patch32
+
+# RAG
+RAG_MODEL_NAME=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+
+# LLM
+OPENROUTER_API_KEY=votre_cle_api
+OPENROUTER_MODEL=google/gemma-4-31b-it:free
+```
+
+Ne jamais envoyer le fichier `.env` sur GitHub.
+
+---
+
+# Lancement de l'API
 
 Démarrer le serveur :
 
@@ -129,7 +239,7 @@ Démarrer le serveur :
 uvicorn app.main:app --reload
 ```
 
-L'API est disponible sur :
+L'API est disponible :
 
 ```
 http://127.0.0.1:8000
@@ -143,63 +253,116 @@ http://127.0.0.1:8000/docs
 
 ---
 
-## Endpoint principal
+# Endpoint principal
 
-### POST /support-ticket
+## POST /support-ticket
 
-Permet d'envoyer une réclamation client.
+Permet d'envoyer une réclamation client multimodale.
 
-Paramètres :
+### Paramètres
 
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| description | String | Description du problème |
-| audio | File | Message vocal client |
-| image | File | Photo du produit |
+| Paramètre   | Type   | Description                       |
+| ----------- | ------ | --------------------------------- |
+| description | String | Description textuelle du problème |
+| audio       | File   | Message vocal (.mp3, .wav)        |
+| image       | File   | Photo du produit (.png, .jpg)     |
 
 ---
 
-## Exemple de réponse
+# Exemple de réponse API
 
 ```json
 {
   "message": "Ticket reçu avec succès.",
-  "description": "Mon appareil est tombé et l'écran semble endommagé.",
-  "transcription": "Bonjour, j'ai reçu mon colis aujourd'hui et le téléphone est fissuré.",
-  "vision_result": {
-    "label": "a product with a cracked screen",
-    "confidence": 0.85,
-    "defect_detected": true
-  },
+  "description": "Mon téléphone est arrivé cassé avec l'écran fissuré.",
+  "transcription": null,
+  "vision_result": null,
   "rag_result": {
-    "status": "Remboursable",
-    "confidence": 0.58
-  }
+    "policy": "Règle 1.1 - Casse / Dommage visible",
+    "confidence": 0.59,
+    "policy_status": "Remboursable",
+    "diagnostic": {
+      "resume": "Téléphone arrivé cassé avec écran fissuré.",
+      "statut_final": "À vérifier",
+      "action_recommandee": "Demander au client une photo du dommage dans les 48 heures suivant la réception."
+    }
+  },
+  "audio_received": false,
+  "image_received": false
 }
 ```
 
 ---
 
-## Optimisation
+# Optimisation et performances
 
-Les modèles d'intelligence artificielle sont chargés une seule fois en mémoire grâce à un système de cache (`@lru_cache`) afin de limiter les temps de chargement et l'utilisation des ressources.
+Les modèles lourds sont chargés une seule fois grâce à un système de cache :
+
+```python
+@lru_cache(maxsize=1)
+```
+
+Cela concerne :
+
+* Whisper ;
+* CLIP ;
+* Sentence Transformer ;
+* l'index FAISS.
+
+Avantages :
+
+* réduction du temps de réponse ;
+* économie mémoire ;
+* absence de rechargement à chaque requête.
 
 ---
 
-## Gestion du projet
+# Gestion des erreurs
 
-Le projet suit une organisation Git Flow avec :
+Le projet possède une gestion globale des exceptions via FastAPI.
 
-- `main` : branche principale
-- `develop` : branche de développement
-- `feature/*` : branches dédiées aux fonctionnalités
-
-Les fonctionnalités sont développées dans des branches dédiées puis fusionnées dans `develop`.
+Les erreurs serveur sont interceptées afin de retourner une réponse JSON propre au client.
 
 ---
 
-## Auteur
+# Gestion du projet
+
+Le projet suit une organisation Git Flow :
+
+Branches utilisées :
+
+```
+main
+develop
+feature/*
+```
+
+Règles appliquées :
+
+* aucun commit direct sur `main` ;
+* développement des fonctionnalités dans des branches dédiées ;
+* fusion via Pull Request ;
+* historique Git propre.
+
+---
+
+# Tests
+
+Les tests permettent de vérifier le comportement du système RAG.
+
+Exemples testés :
+
+* produit cassé ;
+* mauvais modèle reçu ;
+* pièce manquante ;
+* retard de livraison ;
+* colis perdu ;
+* mauvaise utilisation.
+
+---
+
+# Auteur
 
 **Dado Watt**
 
-Projet réalisé dans le cadre d'un développement d'un micro-service d'intelligence artificielle avec FastAPI et Hugging Face.
+Projet réalisé dans le cadre du développement d'un micro-service IA multimodal avec FastAPI, Hugging Face, RAG et LLM.
