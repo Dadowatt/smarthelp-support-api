@@ -31,5 +31,5 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 OPENROUTER_MODEL = os.getenv(
     "OPENROUTER_MODEL",
-    "openai/gpt-oss-20b:free"
+    "google/gemma-4-26b-a4b-it:free"
 )

@@ -6,13 +6,12 @@ from app.core.config import (
     OPENROUTER_MODEL,
 )
 
-
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
 
 async def generate_answer(
     question: str,
     context: str,
+    policy_status: str,
 ):
     """
     Génère un diagnostic structuré JSON à partir
@@ -24,6 +23,7 @@ async def generate_answer(
             "OPENROUTER_API_KEY non configurée."
         )
 
+
     prompt = f"""
 Tu es un assistant du service client e-commerce.
 
@@ -32,6 +32,9 @@ du contexte de politique interne fourni.
 
 Contexte de la politique interne :
 {context}
+
+Statut extrait de la règle :
+{policy_status}
 
 Question du client :
 {question}
@@ -46,6 +49,7 @@ Retourne uniquement un JSON valide avec exactement cette structure :
 
 Consignes importantes :
 - Utilise uniquement les informations présentes dans le contexte.
+- Le statut_final doit correspondre au statut métier fourni si les conditions sont respectées.
 - N'invente aucune règle, condition ou procédure.
 - Si une information manque, indique qu'elle doit être vérifiée.
 - Ne retourne aucun texte avant ou après le JSON.
@@ -74,13 +78,38 @@ Consignes importantes :
             json=payload,
             timeout=60,
         )
+    print("STATUS =", response.status_code)
+    print("BODY =")
+    print(response.text)
 
     if response.status_code != 200:
+        print("OpenRouter Error:", response.status_code)
+        print(response.text)
         return None
 
     data = response.json()
+    print("DATA =")
+    print(json.dumps(data, indent=2))
 
     content = data["choices"][0]["message"]["content"]
+
+    print("===== REPONSE DU LLM =====")
+    print(content)
+    print("==========================")
+
+    # Nettoyage des balises Markdown éventuelles
+    content = content.strip()
+
+    if content.startswith("```json"):
+        content = content.replace("```json", "", 1)
+
+    if content.startswith("```"):
+        content = content.replace("```", "", 1)
+
+    if content.endswith("```"):
+        content = content[:-3]
+
+    content = content.strip()
 
     try:
         result = json.loads(content)
@@ -88,14 +117,14 @@ Consignes importantes :
         return {
             "resume": result.get(
                 "resume",
-                result.get("diagnostic")
+                result.get("diagnostic"),
             ),
             "statut_final": result.get(
                 "statut_final",
-                result.get("statut_propose")
+                result.get("statut_propose"),
             ),
             "action_recommandee": result.get(
-                "action_recommandee"
+                "action_recommandee",
             ),
         }
 

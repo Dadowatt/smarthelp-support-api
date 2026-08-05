@@ -148,17 +148,16 @@ async def search_policy(query: str):
     llm_response = await generate_answer(
         question=query,
         context=best_result["policy"],
+        policy_status=best_result["status"],
     )
 
     if llm_response is None:
         llm_response = {
-            "diagnostic": "Analyse automatique indisponible.",
-            "statut_final": "À vérifier",
+            "resume": "Analyse automatique indisponible.",
             "action_recommandee": (
                 "Une vérification manuelle du dossier est nécessaire."
             ),
         }
-
 
     return {
         "policy": best_result["policy"],
