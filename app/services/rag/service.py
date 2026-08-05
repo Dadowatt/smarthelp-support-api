@@ -1,167 +1,226 @@
 from app.services.rag.loader import load_rag_model
 from app.services.llm.service import generate_answer
 
+
+
 def extract_status(policy: str):
-    """
-    Extrait le statut associé depuis une règle RAG.
-    Exemple:
-    Statut associé : "Remboursable"
-    devient:
-    Remboursable
-    """
 
     if "Statut associé" not in policy:
         return None
 
-    start = policy.find('Statut associé')
+    part = policy.split("Statut associé")[1]
 
-    status_part = policy[start:]
-
-    if '"' in status_part:
-        status = status_part.split('"')[1]
-        return status
+    if '"' in part:
+        return part.split('"')[1]
 
     return None
 
-def prioritize_rule(query: str, results: list):
-    query = query.lower()
 
-    priority_rules = [
-        (
-            "Règle 4.2",
-            [
-                "pas de photo",
-                "sans photo",
-                "aucune photo",
-                "pas d'image",
-                "sans preuve",
-            ],
-        ),
-        (
-            "Règle 4.1",
-            [
-                "tombé",
-                "tombée",
-                "tombe",
-                "chute",
-                "est tombé",
-                "a chuté",
-                "cassé après",
-                "mauvaise manipulation",
-                "mauvaise utilisation",
-                "usure",
-            ],
-        ),
-        (
-            "Règle 3.3",
-            [
-                "perdu",
-                "bloqué",
-                "bloqué depuis",
-            ],
-        ),
-        (
-            "Règle 2.2",
-            [
-                "pièce manquante",
-                "accessoire manquant",
-                "il manque une pièce",
-            ],
-        ),
-        (
-            "Règle 2.1",
-            [
-                "mauvais modèle",
-                "mauvaise couleur",
-                "mauvaise taille",
-            ],
-        ),
-        (
-            "Règle 3.2",
-            [
-                "retard",
-                "6 jours",
-                "7 jours",
-                "8 jours",
-            ],
-        ),
-        (
-            "Règle 1.1",
-            [
-                "cassé",
-                "cassée",
-                "fissuré",
-                "fissurée",
-                "endommagé",
-                "endommagée",
-                "écran",
-            ],
-        ),
-    ]
 
-    # Priorité métier
-    for rule, keywords in priority_rules:
-        if any(keyword in query for keyword in keywords):
-            for result in results:
-                if rule in result["policy"]:
-                    return result
+def generate_rag_diagnostic(
+    policy: str,
+    status: str,
+    query: str,
+):
 
-    # Sinon on garde le résultat FAISS
+    if "Règle 1.1" in policy:
+
+        return {
+            "resume": (
+                "Le client signale un produit cassé, "
+                "fissuré ou endommagé à la réception."
+            ),
+            "statut_final": status,
+            "action_recommandee": (
+                "Vérifier que le dommage est signalé "
+                "dans les 48 heures avec une preuve."
+            ),
+        }
+
+
+    if "Règle 4.1" in policy:
+
+        return {
+            "resume": (
+                "Le dommage semble lié à une chute, "
+                "une mauvaise manipulation ou une usure."
+            ),
+            "statut_final": status,
+            "action_recommandee": (
+                "Analyser les circonstances du dommage."
+            ),
+        }
+
+
+    if "Règle 4.2" in policy:
+
+        return {
+            "resume": (
+                "La demande nécessite des justificatifs "
+                "complémentaires."
+            ),
+            "statut_final": status,
+            "action_recommandee": (
+                "Demander une preuve supplémentaire."
+            ),
+        }
+
+
+    if "Règle 3.3" in policy:
+
+        return {
+            "resume": (
+                "Le client signale un problème "
+                "lié au transport."
+            ),
+            "statut_final": status,
+            "action_recommandee": (
+                "Vérifier le statut transporteur."
+            ),
+        }
+
+
+    if "Règle 2.1" in policy:
+
+        return {
+            "resume": (
+                "Le client indique avoir reçu "
+                "un mauvais article."
+            ),
+            "statut_final": status,
+            "action_recommandee": (
+                "Organiser un échange."
+            ),
+        }
+
+
+    if "Règle 2.2" in policy:
+
+        return {
+            "resume": (
+                "Le client signale une pièce manquante."
+            ),
+            "statut_final": status,
+            "action_recommandee": (
+                "Envoyer la pièce manquante."
+            ),
+        }
+
+
+    return {
+        "resume": query,
+        "statut_final": status,
+        "action_recommandee": (
+            "Appliquer la procédure correspondante."
+        ),
+    }
+
+
+
+def select_best_rule(results):
+
+    if not results:
+        return None
+
+
     return results[0]
 
 
-async def search_policy(query: str):
+
+async def search_policy(
+    query: str,
+    has_image: bool = False,
+):
+
+
     rag = load_rag_model()
+
 
     model = rag["model"]
     index = rag["index"]
     documents = rag["documents"]
 
-    query_embedding = model.encode(
+
+
+    embedding = model.encode(
         [query],
         normalize_embeddings=True,
     )
 
+
     scores, indices = index.search(
-        query_embedding,
-        k=9,
+        embedding,
+        k=5,
     )
+
+
 
     results = []
 
-    for score, index in zip(scores[0], indices[0]):
+
+    for score, idx in zip(scores[0], indices[0]):
+
         results.append(
             {
-                "policy": documents[index]["content"],
-                "status": documents[index]["status"],
-                "confidence": round((float(score) + 1) / 2, 2),
+                "policy": documents[idx]["content"],
+                "status": documents[idx]["status"],
+                "confidence": round(
+                    (float(score)+1)/2,
+                    2
+                )
             }
         )
 
-    best_result = prioritize_rule(query, results)
 
-    best_result["confidence"] = round(
-        best_result["confidence"],
-        2,
-    )
+
+    best = select_best_rule(results)
+
+
+
+    print("======================")
+    print("QUESTION RAG")
+    print(query)
+
+    print("======================")
+    print("REGLE RETENUE")
+    print(best["policy"])
+
+
+
+    if best["status"]:
+
+        return {
+
+            "policy": best["policy"],
+
+            "confidence": best["confidence"],
+
+            "policy_status": best["status"],
+
+            "diagnostic": generate_rag_diagnostic(
+                policy=best["policy"],
+                status=best["status"],
+                query=query,
+            )
+        }
+
+
 
     llm_response = await generate_answer(
         question=query,
-        context=best_result["policy"],
-        policy_status=best_result["status"],
+        context=best["policy"],
+        policy_status=best["status"],
     )
 
-    if llm_response is None:
-        llm_response = {
-            "resume": "Analyse automatique indisponible.",
-            "action_recommandee": (
-                "Une vérification manuelle du dossier est nécessaire."
-            ),
-        }
 
     return {
-        "policy": best_result["policy"],
-        "confidence": best_result["confidence"],
-        "policy_status": best_result["status"],
-        "diagnostic": llm_response,
+
+        "policy": best["policy"],
+
+        "confidence": best["confidence"],
+
+        "policy_status": best["status"],
+
+        "diagnostic": llm_response
+
     }

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 
 from app.schemas.ticket import TicketResponse
+
 from app.services.audio.service import process_audio
 from app.services.vision.service import process_image
 
@@ -10,45 +11,113 @@ from app.utils.file_validator import (
     validate_image_file,
     validate_image_size,
 )
+
 from app.services.rag.service import search_policy
+
 
 router = APIRouter(tags=["Support"])
 
 
-@router.post("/support-ticket", response_model=TicketResponse)
+@router.post(
+    "/support-ticket",
+    response_model=TicketResponse
+)
 async def create_support_ticket(
-    description: str | None = Form(default=None, examples=[""]),
+    description: str | None = Form(default=None),
     audio: UploadFile | None = File(default=None),
     image: UploadFile | None = File(default=None),
 ):
+
     if description:
         description = description.strip()
+
 
     if not audio and not image and not description:
         raise HTTPException(
             status_code=400,
-            detail="Vous devez fournir au moins un audio, une image ou une description."
+            detail=(
+                "Vous devez fournir au moins "
+                "un audio, une image ou une description."
+            )
         )
+
 
     transcription = None
     vision_result = None
-    rag_result = None
 
-    if audio is not None:
+
+    # =========================
+    # 1 - ANALYSE AUDIO
+    # =========================
+
+    if audio:
+
         await validate_audio_size(audio)
         validate_audio_file(audio)
+
         transcription = await process_audio(audio)
 
-        if transcription:
-            rag_result = await search_policy(transcription)
 
-    if image is not None:
+
+    # =========================
+    # 2 - ANALYSE IMAGE
+    # =========================
+
+    if image:
+
         await validate_image_size(image)
         validate_image_file(image)
+
         vision_result = await process_image(image)
 
-    if rag_result is None and description:
-        rag_result = await search_policy(description)
+
+
+    # =========================
+    # 3 - CONSTRUCTION QUERY RAG
+    # =========================
+
+    query_parts = []
+
+
+    if description:
+        query_parts.append(
+            f"Description client : {description}"
+        )
+
+
+    if transcription:
+        query_parts.append(
+            f"Message vocal client : {transcription}"
+        )
+
+
+    if vision_result:
+
+        query_parts.append(
+            f"""
+Analyse visuelle :
+Label : {vision_result["label"]}
+
+Défaut détecté :
+{vision_result["defect_detected"]}
+"""
+        )
+
+
+    query = "\n".join(query_parts)
+
+
+
+    # =========================
+    # 4 - UNE SEULE RECHERCHE RAG
+    # =========================
+
+    rag_result = await search_policy(
+        query,
+        has_image=image is not None,
+    )
+
+
 
     return TicketResponse(
         message="Ticket reçu avec succès.",

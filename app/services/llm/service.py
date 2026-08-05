@@ -17,7 +17,8 @@ async def generate_answer(
     Génère un diagnostic structuré JSON à partir
     de la question client et du contexte RAG.
     """
-
+    print("===== APPEL LLM =====")
+    
     if not OPENROUTER_API_KEY:
         raise Exception(
             "OPENROUTER_API_KEY non configurée."
