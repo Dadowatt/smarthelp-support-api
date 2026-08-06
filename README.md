@@ -7,7 +7,7 @@ Le service combine plusieurs briques d'intelligence artificielle afin d'automati
 * **Whisper** pour la transcription automatique des messages vocaux ;
 * **CLIP** pour l'analyse visuelle des images produits ;
 * **FAISS + Sentence Transformers** pour la recherche documentaire RAG ;
-* **LLM via OpenRouter (Google Gemma)** pour générer un diagnostic métier structuré à partir des règles récupérées.
+* Un moteur de règles métier pour déterminer automatiquement la décision associée au ticket.
 
 ---
 
@@ -16,19 +16,26 @@ Le service combine plusieurs briques d'intelligence artificielle afin d'automati
 * Réception d'un ticket client via `POST /support-ticket`
 * Support des descriptions textuelles, fichiers audio et images
 * Transcription automatique des messages vocaux avec Whisper
-* Analyse d'images de produits endommagés avec CLIP Zero-Shot
+* Analyse d'images de produits avec CLIP Zero-Shot
 * Recherche intelligente dans une base de connaissances interne avec un système RAG
-* Génération d'un diagnostic client structuré grâce à un LLM
+* Correspondance automatique avec une règle métier
 * Retour JSON contenant :
 
-  * la règle métier trouvée ;
+  * la règle appliquée ;
   * le niveau de confiance du RAG ;
-  * le statut issu de la politique interne ;
-  * le diagnostic généré par le LLM ;
-  * l'action recommandée
-* Validation des fichiers entrants
-* Gestion centralisée des erreurs
-* Chargement optimisé des modèles IA en mémoire
+  * le statut de la politique interne ;
+  * la décision métier associée ;
+  * l'action recommandée.
+
+* Validation des fichiers entrants :
+  * formats acceptés ;
+  * taille maximale ;
+  * gestion des erreurs.
+* Refus des tickets vides :
+  * description absente ;
+  * audio absent ;
+  * image absente.
+* Chargement optimisé des modèles IA en mémoire.
 
 ---
 
@@ -40,8 +47,7 @@ app/
 │   └── support.py              # Routes FastAPI
 │
 ├── core/
-│   ├── config.py               # Configuration des modèles et variables d'environnement
-│   └── exceptions.py            # Gestion globale des erreurs
+│   └── config.py               # Configuration des modèles et variables d'environnement
 │
 ├── knowledge/
 │   └── support_policy.txt       # Base documentaire utilisée par le RAG
@@ -53,18 +59,16 @@ app/
 │   │
 │   ├── audio/
 │   │   ├── loader.py            # Chargement Whisper avec cache
-│   │   └── service.py           # Transcription audio
+│   │   ├── whisper.py           # Transcription audio
+│   │   └── service.py           # Gestion des fichiers audio
 │   │
 │   ├── vision/
 │   │   ├── loader.py            # Chargement CLIP avec cache
 │   │   └── service.py           # Analyse des images
 │   │
-│   ├── rag/
-│   │   ├── loader.py            # Chargement FAISS + embeddings
-│   │   └── service.py           # Recherche documentaire et orchestration RAG
-│   │
-│   └── llm/
-│       └── service.py           # Génération du diagnostic via OpenRouter
+│   └── rag/
+│       ├── loader.py            # Chargement FAISS + embeddings
+│       └── service.py           # Recherche documentaire et décision métier
 │
 ├── utils/
 │   └── file_validator.py        # Validation des fichiers entrants
@@ -85,8 +89,6 @@ app/
 * FAISS
 * Whisper
 * CLIP
-* OpenRouter API
-* Google Gemma LLM
 * Pillow
 
 ---
@@ -112,8 +114,8 @@ openai/clip-vit-base-patch32
 Utilisé pour analyser les images en Zero-Shot afin d'identifier des défauts visibles comme :
 
 * écran fissuré ;
-* produit endommagé ;
-* défaut physique.
+* produit cassé ;
+* dommage physique.
 
 ---
 
@@ -124,21 +126,6 @@ sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 ```
 
 Ce modèle transforme les requêtes utilisateurs et les règles internes en vecteurs afin de permettre une recherche sémantique avec FAISS.
-
----
-
-## LLM Diagnostic
-
-```
-google/gemma-4-31b-it:free
-```
-
-Utilisé via OpenRouter pour analyser la règle récupérée par le RAG et produire un diagnostic structuré.
-
-Le LLM ne remplace pas la recherche documentaire :
-
-* le RAG trouve la règle applicable ;
-* le LLM interprète cette règle selon le contexte du client.
 
 ---
 
@@ -161,11 +148,10 @@ Le LLM ne remplace pas la recherche documentaire :
                   Règle métier trouvée
                          |
                          |
-                 LLM Google Gemma
-                 via OpenRouter
+              Décision métier automatique
                          |
                          |
-              Diagnostic JSON final
+              Réponse JSON finale
 ```
 
 ---
@@ -214,17 +200,13 @@ Créer un fichier `.env` à la racine du projet :
 ```env
 # Audio
 AUDIO_MODEL_NAME=openai/whisper-base
-DEFAULT_LANGUAGE=french
+DEFAULT_LANGUAGE=fr
 
 # Vision
 VISION_MODEL_NAME=openai/clip-vit-base-patch32
 
 # RAG
 RAG_MODEL_NAME=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-
-# LLM
-OPENROUTER_API_KEY=votre_cle_api
-OPENROUTER_MODEL=google/gemma-4-31b-it:free
 ```
 
 Ne jamais envoyer le fichier `.env` sur GitHub.
@@ -261,11 +243,13 @@ Permet d'envoyer une réclamation client multimodale.
 
 ### Paramètres
 
-| Paramètre   | Type   | Description                       |
-| ----------- | ------ | --------------------------------- |
+| Paramètre | Type | Description |
+|---|---|---|
 | description | String | Description textuelle du problème |
-| audio       | File   | Message vocal (.mp3, .wav)        |
-| image       | File   | Photo du produit (.png, .jpg)     |
+| audio | File | Message vocal client |
+| image | File | Photo du produit |
+
+Au moins un des trois éléments doit être fourni.
 
 ---
 
@@ -274,17 +258,20 @@ Permet d'envoyer une réclamation client multimodale.
 ```json
 {
   "message": "Ticket reçu avec succès.",
-  "description": "Mon téléphone est arrivé cassé avec l'écran fissuré.",
+  "description": "Mon téléphone est cassé",
   "transcription": null,
   "vision_result": null,
   "rag_result": {
     "policy": "Règle 1.1 - Casse / Dommage visible",
-    "confidence": 0.59,
+    "rule": "1.1",
+    "confidence": 0.68,
     "policy_status": "Remboursable",
-    "diagnostic": {
-      "resume": "Téléphone arrivé cassé avec écran fissuré.",
-      "statut_final": "À vérifier",
-      "action_recommandee": "Demander au client une photo du dommage dans les 48 heures suivant la réception."
+    "decision": {
+      "rule_id": "1.1",
+      "category": "Casse / Dommage visible",
+      "status": "Remboursable",
+      "action": "Remboursement intégral ou renvoi gratuit",
+      "confidence": 0.68
     }
   },
   "audio_received": false,
@@ -319,9 +306,20 @@ Avantages :
 
 # Gestion des erreurs
 
-Le projet possède une gestion globale des exceptions via FastAPI.
+Le projet possède une validation des requêtes entrantes.
 
-Les erreurs serveur sont interceptées afin de retourner une réponse JSON propre au client.
+Exemples :
+
+* ticket vide :
+
+```json
+{
+  "detail": "Vous devez fournir au moins un audio, une image ou une description."
+}
+```
+
+* fichier non supporté ;
+* fichier trop volumineux.
 
 ---
 
@@ -353,11 +351,18 @@ Les tests permettent de vérifier le comportement du système RAG.
 Exemples testés :
 
 * produit cassé ;
-* mauvais modèle reçu ;
+* mauvais article reçu ;
 * pièce manquante ;
 * retard de livraison ;
 * colis perdu ;
-* mauvaise utilisation.
+* mauvaise utilisation ;
+* absence de preuve.
+
+Tests multimodaux :
+
+* description texte ;
+* message vocal transcrit avec Whisper ;
+* image analysée avec CLIP.
 
 ---
 
@@ -365,4 +370,4 @@ Exemples testés :
 
 **Dado Watt**
 
-Projet réalisé dans le cadre du développement d'un micro-service IA multimodal avec FastAPI, Hugging Face, RAG et LLM.
+Projet réalisé dans le cadre du développement d'un micro-service IA multimodal avec FastAPI, Hugging Face, RAG et modèles de vision/audio.
