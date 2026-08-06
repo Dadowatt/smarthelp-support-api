@@ -26,10 +26,3 @@ RAG_MODEL_NAME = os.getenv(
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 )
 
-# OpenRouter
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-
-OPENROUTER_MODEL = os.getenv(
-    "OPENROUTER_MODEL",
-    "google/gemma-4-26b-a4b-it:free"
-)

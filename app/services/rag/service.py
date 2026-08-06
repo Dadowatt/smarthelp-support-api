@@ -1,226 +1,290 @@
 from app.services.rag.loader import load_rag_model
-from app.services.llm.service import generate_answer
 
+import unicodedata
+import re
 
+def normalize_text(text: str):
 
-def extract_status(policy: str):
+    text = text.lower()
 
-    if "Statut associé" not in policy:
+    text = unicodedata.normalize(
+        "NFD",
+        text
+    )
+
+    text = "".join(
+        c for c in text
+        if unicodedata.category(c) != "Mn"
+    )
+
+    return text
+
+def extract_rule(policy: str):
+
+    match = re.search(
+        r"Règle\s+(\d+\.\d+)",
+        policy
+    )
+
+    if not match:
         return None
 
-    part = policy.split("Statut associé")[1]
-
-    if '"' in part:
-        return part.split('"')[1]
-
-    return None
+    return match.group(1)
 
 
-
-def generate_rag_diagnostic(
-    policy: str,
-    status: str,
+def boost_rule_matching(
     query: str,
+    policy: str
 ):
 
-    if "Règle 1.1" in policy:
-
-        return {
-            "resume": (
-                "Le client signale un produit cassé, "
-                "fissuré ou endommagé à la réception."
-            ),
-            "statut_final": status,
-            "action_recommandee": (
-                "Vérifier que le dommage est signalé "
-                "dans les 48 heures avec une preuve."
-            ),
-        }
+    query = normalize_text(query)
+    policy = normalize_text(policy)
 
 
-    if "Règle 4.1" in policy:
-
-        return {
-            "resume": (
-                "Le dommage semble lié à une chute, "
-                "une mauvaise manipulation ou une usure."
-            ),
-            "statut_final": status,
-            "action_recommandee": (
-                "Analyser les circonstances du dommage."
-            ),
-        }
+    score = 0
 
 
-    if "Règle 4.2" in policy:
-
-        return {
-            "resume": (
-                "La demande nécessite des justificatifs "
-                "complémentaires."
-            ),
-            "statut_final": status,
-            "action_recommandee": (
-                "Demander une preuve supplémentaire."
-            ),
-        }
+    keywords = {
 
 
-    if "Règle 3.3" in policy:
+        "regle 1.1": [
+            "cass",
+            "fissur",
+            "endomm",
+            "arrive cass",
+            "produit casse",
+            "telephone casse",
+            "ecran casse",
+            "livraison",
+            "reception"
 
-        return {
-            "resume": (
-                "Le client signale un problème "
-                "lié au transport."
-            ),
-            "statut_final": status,
-            "action_recommandee": (
-                "Vérifier le statut transporteur."
-            ),
-        }
+        ],
 
+        "regle 4.1": [
+            "tomb",
+            "chut",
+            "mauvaise manipulation",
+            "mauvais usage",
+            "usure",
+            "abime apres reception"
+        ],
 
-    if "Règle 2.1" in policy:
+        "regle 4.2": [
+            "pas de photo",
+            "sans photo",
+            "aucune preuve",
+            "pas de preuve",
+            "manque preuve",
+            "aucun justificatif"
+        ],
 
-        return {
-            "resume": (
-                "Le client indique avoir reçu "
-                "un mauvais article."
-            ),
-            "statut_final": status,
-            "action_recommandee": (
-                "Organiser un échange."
-            ),
-        }
+        "regle 2.1": [
+            "mauvais modele",
+            "mauvais article",
+            "mauvais produit",
+            "mauvaise couleur",
+            "mauvaise taille",
+            "mauvaise reference"
+        ],
 
+        "regle 2.2": [
+            "piece manquante",
+            "accessoire manquant",
+            "element manquant",
+            "composant manquant",
+            "incomplet"
+        ],
 
-    if "Règle 2.2" in policy:
+        "regle 3.1": [
+            "retard leger",
+            "retard mineur",
+            "1 jour",
+            "2 jours",
+            "3 jours",
+            "moins de 3 jours"
+        ],
 
-        return {
-            "resume": (
-                "Le client signale une pièce manquante."
-            ),
-            "statut_final": status,
-            "action_recommandee": (
-                "Envoyer la pièce manquante."
-            ),
-        }
+        "regle 3.2": [
+            "retard majeur",
+            "plus de 5 jours",
+            "6 jours",
+            "7 jours",
+            "plusieurs jours retard",
+            "retard important"
+        ],
 
+        "regle 3.3": [
+            "perdu",
+            "colis perdu",
+            "bloque",
+            "transporteur",
+            "suivi bloque",
+            "statut perdu"
+        ],
 
-    return {
-        "resume": query,
-        "statut_final": status,
-        "action_recommandee": (
-            "Appliquer la procédure correspondante."
-        ),
     }
 
+    for rule, words in keywords.items():
+
+        if rule in policy:
+
+            for word in words:
+
+                if word in query:
+
+                    score += 1
+
+    # =========================
+    # PRIORITES METIER
+    # =========================
 
 
-def select_best_rule(results):
+    # Absence de preuve
 
-    if not results:
-        return None
+    if (
+        "pas de photo" in query
+        or "sans photo" in query
+        or "aucune photo" in query
+        or "pas de preuve" in query
+        or "aucune preuve" in query
+    ):
+
+        if "regle 4.2" in policy:
+            score += 10
+        if "regle 1.1" in policy:
+            score -= 5
+
+    # Chute après réception
+
+    if (
+        "tombe" in query
+        or "tomber" in query
+        or "chute" in query
+        or "fait tomber" in query
+        or "mauvaise manipulation" in query
+    ):
 
 
-    return results[0]
+        if "regle 4.1" in policy:
+            score += 10
 
+        if "regle 1.1" in policy:
+            score -= 5
 
+    # Produit cassé dès réception
+
+    if (
+        "arrive casse" in query
+        or "arrive endommage" in query
+        or "a la reception" in query
+        or "des reception" in query
+    ):
+        if "regle 1.1" in policy:
+            score += 10
+    return score
+
+def calculate_final_confidence(
+    faiss_score: float,
+    boost: int
+):
+    confidence = faiss_score + (boost * 0.03)
+
+    if confidence > 0.99:
+        confidence = 0.99
+
+    if confidence < 0:
+        confidence = 0
+
+    return round(confidence, 2)
 
 async def search_policy(
     query: str,
-    has_image: bool = False,
 ):
-
 
     rag = load_rag_model()
 
-
     model = rag["model"]
+
     index = rag["index"]
+
     documents = rag["documents"]
-
-
 
     embedding = model.encode(
         [query],
         normalize_embeddings=True,
     )
 
-
     scores, indices = index.search(
         embedding,
         k=5,
     )
-
-
-
     results = []
 
-
     for score, idx in zip(scores[0], indices[0]):
-
+        if idx < 0:
+            continue
         results.append(
+
             {
                 "policy": documents[idx]["content"],
                 "status": documents[idx]["status"],
-                "confidence": round(
-                    (float(score)+1)/2,
-                    2
-                )
+                "confidence": round((float(score) + 1) / 2, 2)
             }
         )
 
+    if not results:
+        return None
 
+    for result in results:
 
-    best = select_best_rule(results)
+        result["boost"] = boost_rule_matching(
+            query,
+            result["policy"]
+        )
 
-
-
-    print("======================")
-    print("QUESTION RAG")
-    print(query)
-
-    print("======================")
-    print("REGLE RETENUE")
-    print(best["policy"])
-
-
-
-    if best["status"]:
-
-        return {
-
-            "policy": best["policy"],
-
-            "confidence": best["confidence"],
-
-            "policy_status": best["status"],
-
-            "diagnostic": generate_rag_diagnostic(
-                policy=best["policy"],
-                status=best["status"],
-                query=query,
-            )
-        }
-
-
-
-    llm_response = await generate_answer(
-        question=query,
-        context=best["policy"],
-        policy_status=best["status"],
+    results.sort(
+        key=lambda x: (
+            x["boost"],
+            x["confidence"]
+        ),
+        reverse=True
     )
 
+    print("\n===== DEBUG BOOST =====")
+
+    for result in results:
+
+        print(
+
+            result["policy"][:40],
+
+            "FAISS:",
+
+            result["confidence"],
+
+            "BOOST:",
+
+            result["boost"]
+
+        )
+
+    print("======================")
+
+    best = results[0]
+
+    final_confidence = calculate_final_confidence(
+    best["confidence"],
+    best["boost"]
+    )
 
     return {
 
-        "policy": best["policy"],
+    "policy": best["policy"],
 
-        "confidence": best["confidence"],
+    "rule": extract_rule(best["policy"]),
 
-        "policy_status": best["status"],
+    "confidence": final_confidence,
 
-        "diagnostic": llm_response
+    "policy_status": best["status"],
 
-    }
+}

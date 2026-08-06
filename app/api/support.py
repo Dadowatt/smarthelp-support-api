@@ -105,17 +105,13 @@ Défaut détecté :
 
 
     query = "\n".join(query_parts)
+    if not query.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Impossible d'analyser la demande client."
+        )
 
-
-
-    # =========================
-    # 4 - UNE SEULE RECHERCHE RAG
-    # =========================
-
-    rag_result = await search_policy(
-        query,
-        has_image=image is not None,
-    )
+    rag_result = await search_policy(query)
 
 
 
