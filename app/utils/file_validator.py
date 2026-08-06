@@ -4,6 +4,7 @@ ALLOWED_AUDIO_TYPES = {
     "audio/mpeg",
     "audio/wav",
     "audio/x-wav",
+    "audio/webm",
 }
 
 ALLOWED_IMAGE_TYPES = {

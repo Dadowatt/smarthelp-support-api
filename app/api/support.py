@@ -14,14 +14,10 @@ from app.utils.file_validator import (
 
 from app.services.rag.service import search_policy
 
-
 router = APIRouter(tags=["Support"])
 
+@router.post("/support-ticket", response_model=TicketResponse)
 
-@router.post(
-    "/support-ticket",
-    response_model=TicketResponse
-)
 async def create_support_ticket(
     description: str | None = Form(default=None),
     audio: UploadFile | None = File(default=None),
@@ -31,16 +27,13 @@ async def create_support_ticket(
     if description:
         description = description.strip()
 
+    if description.lower() == "string":
+        description = None
 
     if not audio and not image and not description:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Vous devez fournir au moins "
-                "un audio, une image ou une description."
-            )
-        )
-
+            detail=("Vous devez fournir au moins un audio, une image ou une description."))
 
     transcription = None
     vision_result = None
@@ -57,8 +50,6 @@ async def create_support_ticket(
 
         transcription = await process_audio(audio)
 
-
-
     # =========================
     # 2 - ANALYSE IMAGE
     # =========================
@@ -70,26 +61,21 @@ async def create_support_ticket(
 
         vision_result = await process_image(image)
 
-
-
     # =========================
     # 3 - CONSTRUCTION QUERY RAG
     # =========================
 
     query_parts = []
 
-
     if description:
         query_parts.append(
             f"Description client : {description}"
         )
 
-
     if transcription:
         query_parts.append(
             f"Message vocal client : {transcription}"
         )
-
 
     if vision_result:
 
@@ -103,7 +89,6 @@ Défaut détecté :
 """
         )
 
-
     query = "\n".join(query_parts)
     if not query.strip():
         raise HTTPException(
@@ -112,8 +97,6 @@ Défaut détecté :
         )
 
     rag_result = await search_policy(query)
-
-
 
     return TicketResponse(
         message="Ticket reçu avec succès.",
