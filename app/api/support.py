@@ -27,7 +27,7 @@ async def create_support_ticket(
     if description:
         description = description.strip()
 
-    if description.lower() == "string":
+    if description and description.lower() == "string":
         description = None
 
     if not audio and not image and not description:

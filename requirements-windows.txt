@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+python-multipart
+pydantic
+python-dotenv
+numpy
+pillow
+torch
+torchaudio
+transformers
+accelerate
+sentence-transformers
+faiss-cpu
+scikit-learn
+scipy
+
