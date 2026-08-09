@@ -1,14 +1,10 @@
 import os
 import shutil
 import uuid
-
 from fastapi import UploadFile
-
 from app.services.vision.clip import analyze_image
 
-
 UPLOAD_DIR = "uploads"
-
 
 async def process_image(image: UploadFile):
     os.makedirs(UPLOAD_DIR, exist_ok=True)

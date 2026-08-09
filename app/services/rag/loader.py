@@ -1,16 +1,12 @@
 from functools import lru_cache
 from pathlib import Path
-
 import faiss
 from sentence_transformers import SentenceTransformer
-
 from app.core.config import RAG_MODEL_NAME
 import re
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 KNOWLEDGE_FILE = BASE_DIR / "knowledge" / "support_policy.txt"
-
-
 
 def load_documents():
     with open(KNOWLEDGE_FILE, "r", encoding="utf-8") as file:

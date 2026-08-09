@@ -7,41 +7,60 @@ Le service combine plusieurs briques d'intelligence artificielle afin d'automati
 * **Whisper** pour la transcription automatique des messages vocaux ;
 * **CLIP** pour l'analyse visuelle des images produits ;
 * **FAISS + Sentence Transformers** pour la recherche documentaire RAG ;
-* Un moteur de règles métier pour déterminer automatiquement la décision associée au ticket.
+* Un **moteur de règles métier** pour déterminer automatiquement la règle et le statut associés au ticket.
 
 ---
 
 # Fonctionnalités
 
 * Réception d'un ticket client via `POST /support-ticket`
+
 * Support des descriptions textuelles, fichiers audio et images
+
 * Transcription automatique des messages vocaux avec Whisper
+
 * Analyse d'images de produits avec CLIP Zero-Shot
+
 * Recherche intelligente dans une base de connaissances interne avec un système RAG
+
 * Correspondance automatique avec une règle métier
+
+* Boost métier permettant d'améliorer la sélection de la règle selon le contexte de la demande
+
+* Prise en compte des justificatifs disponibles :
+
+  * image ;
+  * audio ;
+  * description.
+
+* Vérification de cohérence entre les informations fournies par le client et l'analyse visuelle
+
 * Retour JSON contenant :
 
   * la règle appliquée ;
   * le niveau de confiance du RAG ;
   * le statut de la politique interne ;
-  * la décision métier associée ;
-  * l'action recommandée.
+  * les informations manquantes.
 
 * Validation des fichiers entrants :
+
   * formats acceptés ;
   * taille maximale ;
   * gestion des erreurs.
+
 * Refus des tickets vides :
+
   * description absente ;
   * audio absent ;
   * image absente.
+
 * Chargement optimisé des modèles IA en mémoire.
 
 ---
 
 # Architecture du projet
 
-```
+```text
 app/
 ├── api/
 │   └── support.py              # Routes FastAPI
@@ -50,30 +69,30 @@ app/
 │   └── config.py               # Configuration des modèles et variables d'environnement
 │
 ├── knowledge/
-│   └── support_policy.txt       # Base documentaire utilisée par le RAG
+│   └── support_policy.txt      # Base documentaire utilisée par le RAG
 │
 ├── schemas/
-│   └── ticket.py                # Modèles Pydantic des réponses API
+│   └── ticket.py               # Modèles Pydantic des réponses API
 │
 ├── services/
 │   │
 │   ├── audio/
-│   │   ├── loader.py            # Chargement Whisper avec cache
-│   │   ├── whisper.py           # Transcription audio
-│   │   └── service.py           # Gestion des fichiers audio
+│   │   ├── loader.py           # Chargement Whisper avec cache
+│   │   ├── whisper.py          # Transcription audio
+│   │   └── service.py          # Gestion des fichiers audio
 │   │
 │   ├── vision/
-│   │   ├── loader.py            # Chargement CLIP avec cache
-│   │   └── service.py           # Analyse des images
+│   │   ├── loader.py           # Chargement CLIP avec cache
+│   │   └── service.py          # Analyse des images
 │   │
 │   └── rag/
-│       ├── loader.py            # Chargement FAISS + embeddings
-│       └── service.py           # Recherche documentaire et décision métier
+│       ├── loader.py           # Chargement FAISS + embeddings
+│       └── service.py          # Recherche documentaire et décision métier
 │
 ├── utils/
-│   └── file_validator.py        # Validation des fichiers entrants
+│   └── file_validator.py       # Validation des fichiers entrants
 │
-└── main.py                      # Point d'entrée FastAPI
+└── main.py                     # Point d'entrée FastAPI
 ```
 
 ---
@@ -97,7 +116,7 @@ app/
 
 ## Audio
 
-```
+```text
 openai/whisper-base
 ```
 
@@ -107,7 +126,7 @@ Utilisé pour convertir les messages vocaux clients en texte exploitable par le 
 
 ## Vision
 
-```
+```text
 openai/clip-vit-base-patch32
 ```
 
@@ -121,38 +140,11 @@ Utilisé pour analyser les images en Zero-Shot afin d'identifier des défauts vi
 
 ## Embedding RAG
 
-```
+```text
 sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 ```
 
 Ce modèle transforme les requêtes utilisateurs et les règles internes en vecteurs afin de permettre une recherche sémantique avec FAISS.
-
----
-
-# Fonctionnement du pipeline IA
-
-```
-                    Ticket client
-                         |
-        --------------------------------
-        |              |               |
-     Texte          Audio            Image
-        |              |               |
-        |          Whisper            |
-        |              |               |
-        -------- Transcription --------
-                         |
-                         |
-                Recherche RAG FAISS
-                         |
-                  Règle métier trouvée
-                         |
-                         |
-              Décision métier automatique
-                         |
-                         |
-              Réponse JSON finale
-```
 
 ---
 
@@ -223,13 +215,13 @@ uvicorn app.main:app --reload
 
 L'API est disponible :
 
-```
+```text
 http://127.0.0.1:8000
 ```
 
 Documentation Swagger :
 
-```
+```text
 http://127.0.0.1:8000/docs
 ```
 
@@ -243,11 +235,11 @@ Permet d'envoyer une réclamation client multimodale.
 
 ### Paramètres
 
-| Paramètre | Type | Description |
-|---|---|---|
+| Paramètre   | Type   | Description                       |
+| ----------- | ------ | --------------------------------- |
 | description | String | Description textuelle du problème |
-| audio | File | Message vocal client |
-| image | File | Photo du produit |
+| audio       | File   | Message vocal client              |
+| image       | File   | Photo du produit                  |
 
 Au moins un des trois éléments doit être fourni.
 
@@ -266,13 +258,7 @@ Au moins un des trois éléments doit être fourni.
     "rule": "1.1",
     "confidence": 0.68,
     "policy_status": "Remboursable",
-    "decision": {
-      "rule_id": "1.1",
-      "category": "Casse / Dommage visible",
-      "status": "Remboursable",
-      "action": "Remboursement intégral ou renvoi gratuit",
-      "confidence": 0.68
-    }
+    "missing_information": []
   },
   "audio_received": false,
   "image_received": false
@@ -319,7 +305,8 @@ Exemples :
 ```
 
 * fichier non supporté ;
-* fichier trop volumineux.
+* fichier trop volumineux ;
+* image ne permettant pas de vérifier le problème signalé.
 
 ---
 
@@ -329,7 +316,7 @@ Le projet suit une organisation Git Flow :
 
 Branches utilisées :
 
-```
+```text
 main
 develop
 feature/*
@@ -346,23 +333,47 @@ Règles appliquées :
 
 # Tests
 
-Les tests permettent de vérifier le comportement du système RAG.
+Les tests permettent de vérifier le comportement du système RAG et du pipeline multimodal.
 
-Exemples testés :
+### Tests RAG
 
-* produit cassé ;
+* produit cassé dès réception ;
+* produit cassé avec justificatif ;
+* produit tombé après réception ;
+* absence de preuve ;
 * mauvais article reçu ;
 * pièce manquante ;
-* retard de livraison ;
-* colis perdu ;
-* mauvaise utilisation ;
-* absence de preuve.
+* retard léger ;
+* retard majeur ;
+* colis perdu ou bloqué ;
+* requête non pertinente.
 
-Tests multimodaux :
+### Tests audio
 
-* description texte ;
-* message vocal transcrit avec Whisper ;
-* image analysée avec CLIP.
+* produit cassé décrit par audio ;
+* chute ou mauvaise manipulation décrite par audio ;
+* audio combiné avec une image ;
+* transcription audio correctement transmise au RAG.
+
+### Tests image
+
+* écran cassé ;
+* produit endommagé ;
+* image sans dommage détecté ;
+* image combinée avec une description ;
+* image combinée avec un message vocal.
+
+### Tests multimodaux
+
+* description seule ;
+* audio seul ;
+* image seule ;
+* description + image ;
+* description + audio ;
+* audio + image ;
+* description + audio + image.
+
+Ces tests permettent de vérifier la sélection de la règle métier, le niveau de confiance, le statut du ticket et les éventuelles informations manquantes.
 
 ---
 

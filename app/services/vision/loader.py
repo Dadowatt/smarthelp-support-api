@@ -1,7 +1,5 @@
 from functools import lru_cache
-
 from transformers import pipeline
-
 from app.core.config import VISION_MODEL_NAME
 
 
