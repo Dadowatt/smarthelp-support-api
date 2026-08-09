@@ -1,5 +1,4 @@
 from app.services.rag.loader import load_rag_model
-
 import unicodedata
 import re
 
@@ -40,24 +39,22 @@ def boost_rule_matching(
     query = normalize_text(query)
     policy = normalize_text(policy)
 
-
     score = 0
 
-
     keywords = {
-
 
         "regle 1.1": [
             "cass",
             "fissur",
             "endomm",
+            "brise",
+            "ecran brise",
             "arrive cass",
             "produit casse",
             "telephone casse",
             "ecran casse",
             "livraison",
             "reception"
-
         ],
 
         "regle 4.1": [
@@ -119,7 +116,11 @@ def boost_rule_matching(
             "bloque",
             "transporteur",
             "suivi bloque",
-            "statut perdu"
+            "statut perdu",
+            "pas arrive",
+            "toujours pas arrive",
+            "colis pas arrive",
+            "commande pas arrivee"
         ],
 
     }
@@ -137,7 +138,6 @@ def boost_rule_matching(
     # =========================
     # PRIORITES METIER
     # =========================
-
 
     # Absence de preuve
 
@@ -197,8 +197,65 @@ def calculate_final_confidence(
 
     return round(confidence, 2)
 
+def determine_policy_status(
+    query: str,
+    rule: str | None,
+    image_received: bool,
+    audio_received: bool,
+):
+    query_normalized = normalize_text(query)
+
+    # Produit tombé / mauvaise manipulation après réception
+    if rule == "4.1":
+        return "Refusé", []
+
+    # Colis perdu / bloqué
+    if rule == "3.3":
+        if (
+            "plus de 7 jours" in query_normalized
+            or "8 jours" in query_normalized
+            or "9 jours" in query_normalized
+            or "10 jours" in query_normalized
+        ):
+            return "Remboursable - Colis perdu", []
+
+        return "À vérifier", [
+            "Délai depuis l'expédition ou le dernier suivi"
+        ]
+
+    # Règle 1.1 : produit endommagé
+    if rule == "1.1":
+
+        # Image + audio = justificatifs complets
+        if image_received and audio_received:
+            return "Remboursable", []
+
+        # Image + description indiquant un dommage à la réception
+        if image_received:
+            if "reception" in query_normalized:
+                return "Remboursable", []
+
+            return "À vérifier", [
+                "Description précise du problème ou message vocal"
+            ]
+
+        # Audio seul ou aucun justificatif
+        return "En attente de justificatifs", [
+            "Photo probante du produit endommagé"
+        ]
+
+    # Règle 4.2 : photo ou audio accepté comme preuve
+    if rule == "4.2" and not image_received and not audio_received:
+        return "En attente de justificatifs", [
+            "Photo probante ou message vocal décrivant clairement le problème"
+        ]
+
+    return None, []
+
 async def search_policy(
     query: str,
+    image_received: bool = False,
+    audio_received: bool = False,
 ):
 
     rag = load_rag_model()
@@ -255,36 +312,51 @@ async def search_policy(
     for result in results:
 
         print(
-
             result["policy"][:40],
-
             "FAISS:",
-
             result["confidence"],
-
             "BOOST:",
-
             result["boost"]
-
         )
 
     print("======================")
 
     best = results[0]
 
+    # =========================
+    # VERIFICATION DU CONTEXTE
+    # =========================
+
+    if best["boost"] == 0 and best["confidence"] < 0.70:
+        return {
+            "policy": None,
+            "rule": None,
+            "confidence": best["confidence"],
+            "policy_status": "Règle introuvable. Veuillez reformuler votre demande.",
+            "missing_information": [],
+        }
+
+    rule = extract_rule(best["policy"])
+
     final_confidence = calculate_final_confidence(
-    best["confidence"],
-    best["boost"]
+        best["confidence"],
+        best["boost"]
     )
 
+    policy_status, missing_information = determine_policy_status(
+        query,
+        rule,
+        image_received,
+        audio_received,
+    )
+
+    if policy_status is None:
+        policy_status = best["status"]
+
     return {
-
-    "policy": best["policy"],
-
-    "rule": extract_rule(best["policy"]),
-
-    "confidence": final_confidence,
-
-    "policy_status": best["status"],
-
-}
+        "policy": best["policy"],
+        "rule": rule,
+        "confidence": final_confidence,
+        "policy_status": policy_status,
+        "missing_information": missing_information,
+    }

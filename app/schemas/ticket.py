@@ -8,7 +8,7 @@ class VisionResult(BaseModel):
 
 
 class RagResult(BaseModel):
-    policy: str
+    policy: str | None = None
     rule: str | None = None
     confidence: float
     policy_status: str | None = None

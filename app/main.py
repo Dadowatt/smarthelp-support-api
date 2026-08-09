@@ -1,9 +1,6 @@
 from fastapi import FastAPI
-
 from app.api.support import router as support_router
-
 from app.core.exceptions import global_exception_handler
-
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
