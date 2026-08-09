@@ -377,8 +377,15 @@ Ces tests permettent de vérifier la sélection de la règle métier, le niveau 
 
 ---
 
+## Frontend
+
+Interface Angular : https://github.com/Dadowatt/smarthelp-front
+
+---
+
 # Auteur
 
 **Dado Watt**
 
 Projet réalisé dans le cadre du développement d'un micro-service IA multimodal avec FastAPI, Hugging Face, RAG et modèles de vision/audio.
+
